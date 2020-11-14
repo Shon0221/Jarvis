@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 
+import 'dart:io' as io;
+import 'dart:math';
+
+import 'package:audio_recorder/audio_recorder.dart';
+import 'package:file/file.dart';
+import 'package:file/local.dart';
+import 'package:path_provider/path_provider.dart';
+
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
+
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
@@ -26,13 +35,17 @@ class MyApp extends StatelessWidget {
         // closer together (more dense) than on mobile platforms.
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
+      home: MyHomePage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key, this.title}) : super(key: key);
+
+  final LocalFileSystem localFileSystem;
+
+  MyHomePage({localFileSystem})
+      : this.localFileSystem = localFileSystem ?? LocalFileSystem();
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -43,25 +56,17 @@ class MyHomePage extends StatefulWidget {
   // used by the build method of the State. Fields in a Widget subclass are
   // always marked "final".
 
-  final String title;
+  final String title = "Jarvis";
 
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  Recording _recording = new Recording();
+  bool _isRecording = false;
+  Random random = new Random();
+  TextEditingController _controller = new TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -80,38 +85,78 @@ class _MyHomePageState extends State<MyHomePage> {
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
+        child: new Padding(
+          padding: new EdgeInsets.all(8.0),
+          child: new Column(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: <Widget>[
+                new FlatButton(
+                  onPressed: _isRecording ? null : _start,
+                  child: new Text("Start"),
+                  color: Colors.green,
+                ),
+                new FlatButton(
+                  onPressed: _isRecording ? _stop : null,
+                  child: new Text("Stop"),
+                  color: Colors.red,
+                ),
+                new TextField(
+                  controller: _controller,
+                  decoration: new InputDecoration(
+                    hintText: 'Enter a custom path',
+                  ),
+                ),
+                new Text("File path of the record: ${_recording.path}"),
+                new Text("Format: ${_recording.audioOutputFormat}"),
+                new Text("Extension : ${_recording.extension}"),
+                new Text(
+                    "Audio recording duration : ${_recording.duration.toString()}")
+              ]),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  _start() async {
+    try {
+      if (await AudioRecorder.hasPermissions) {
+        if (_controller.text != null && _controller.text != "") {
+          String path = _controller.text;
+          if (!_controller.text.contains('/')) {
+            io.Directory appDocDirectory =
+            await getApplicationDocumentsDirectory();
+            path = appDocDirectory.path + '/' + _controller.text;
+          }
+          print("Start recording: $path");
+          await AudioRecorder.start(
+              path: path, audioOutputFormat: AudioOutputFormat.AAC);
+        } else {
+          await AudioRecorder.start();
+        }
+        bool isRecording = await AudioRecorder.isRecording;
+        setState(() {
+          _recording = new Recording(duration: new Duration(), path: "");
+          _isRecording = isRecording;
+        });
+      } else {
+        Scaffold.of(context).showSnackBar(
+            new SnackBar(content: new Text("You must accept permissions")));
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  _stop() async {
+    var recording = await AudioRecorder.stop();
+    print("Stop recording: ${recording.path}");
+    bool isRecording = await AudioRecorder.isRecording;
+    File file = widget.localFileSystem.file(recording.path);
+    print("  File length: ${await file.length()}");
+    setState(() {
+      _recording = recording;
+      _isRecording = isRecording;
+    });
+    _controller.text = recording.path;
   }
 }
