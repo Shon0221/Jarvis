@@ -1,0 +1,58 @@
+basePath: /
+definitions:
+  controllers.HTTPError:
+    type: object
+  models.MQTT:
+    properties:
+      message:
+        type: string
+      topic:
+        type: string
+    required:
+    - message
+    - topic
+    type: object
+host: localhost:80
+info:
+  contact:
+    email: holmes.lin@gmail.com
+  description: IOT API 文件
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  title: IOT API 文件
+  version: "1.0"
+paths:
+  /api/v1/mqtt:
+    put:
+      description: 透過 MQTT 傳送命令
+      parameters:
+      - description: Topic 名稱
+        in: body
+        name: mqtt
+        required: true
+        schema:
+          $ref: '#/definitions/models.MQTT'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MQTT'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/controllers.HTTPError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/controllers.HTTPError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/controllers.HTTPError'
+      summary: 透過 MQTT 傳送命令到 ESP32
+      tags:
+      - MQTT
+swagger: "2.0"

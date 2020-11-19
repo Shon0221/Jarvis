@@ -1,0 +1,14 @@
+app:
+  port: 80
+database:
+  driver: sqlite
+  host: 127.0.0.1
+  port: 3306
+  username: test
+  password: test
+  database: iot
+mqtt:
+  host: 104.199.185.7
+  port: 1883
+  username: iot
+  password: iot@1qaz2wsx
