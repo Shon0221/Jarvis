@@ -1,24 +1,22 @@
-import 'package:flutter/material.dart';
-
 import 'dart:io' as io;
 import 'dart:math';
+import 'dart:async';
 
-import 'package:audio_recorder/audio_recorder.dart';
-import 'package:file/file.dart';
-import 'package:file/local.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: '',
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -41,12 +39,6 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-
-  final LocalFileSystem localFileSystem;
-
-  MyHomePage({localFileSystem})
-      : this.localFileSystem = localFileSystem ?? LocalFileSystem();
-
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
   // how it looks.
@@ -63,10 +55,16 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  Recording _recording = new Recording();
-  bool _isRecording = false;
-  Random random = new Random();
-  TextEditingController _controller = new TextEditingController();
+  bool _hasSpeech = false;
+  double level = 0.0;
+  double minSoundLevel = 50000;
+  double maxSoundLevel = -50000;
+  String lastWords = "";
+  String lastError = "";
+  String lastStatus = "";
+  String _currentLocaleId = "";
+  List<LocaleName> _localeNames = [];
+  final SpeechToText speech = SpeechToText();
 
   @override
   Widget build(BuildContext context) {
@@ -82,81 +80,230 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: new Padding(
-          padding: new EdgeInsets.all(8.0),
-          child: new Column(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: <Widget>[
-                new FlatButton(
-                  onPressed: _isRecording ? null : _start,
-                  child: new Text("Start"),
-                  color: Colors.green,
-                ),
-                new FlatButton(
-                  onPressed: _isRecording ? _stop : null,
-                  child: new Text("Stop"),
-                  color: Colors.red,
-                ),
-                new TextField(
-                  controller: _controller,
-                  decoration: new InputDecoration(
-                    hintText: 'Enter a custom path',
-                  ),
-                ),
-                new Text("File path of the record: ${_recording.path}"),
-                new Text("Format: ${_recording.audioOutputFormat}"),
-                new Text("Extension : ${_recording.extension}"),
-                new Text(
-                    "Audio recording duration : ${_recording.duration.toString()}")
-              ]),
+      body: Column(children: [
+        Center(
+          child: Text(
+            'Speech recognition available',
+            style: TextStyle(fontSize: 22.0),
+          ),
         ),
-      ),
+        Container(
+          child: Column(
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: <Widget>[
+                  FlatButton(
+                    child: Text('Initialize'),
+                    onPressed: _hasSpeech ? null : initSpeechState,
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: <Widget>[
+                  FlatButton(
+                    child: Text('Start'),
+                    onPressed: !_hasSpeech || speech.isListening
+                        ? null
+                        : startListening,
+                  ),
+                  FlatButton(
+                    child: Text('Stop'),
+                    onPressed: speech.isListening ? stopListening : null,
+                  ),
+                  FlatButton(
+                    child: Text('Cancel'),
+                    onPressed: speech.isListening ? cancelListening : null,
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: <Widget>[
+                  DropdownButton(
+                    onChanged: (selectedVal) => _switchLang(selectedVal),
+                    value: _currentLocaleId,
+                    items: _localeNames
+                        .map(
+                          (localeName) => DropdownMenuItem(
+                            value: localeName.localeId,
+                            child: Text(localeName.name),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 4,
+          child: Column(
+            children: <Widget>[
+              Center(
+                child: Text(
+                  'Recognized Words',
+                  style: TextStyle(fontSize: 22.0),
+                ),
+              ),
+              Expanded(
+                child: Stack(
+                  children: <Widget>[
+                    Container(
+                      color: Theme.of(context).selectedRowColor,
+                      child: Center(
+                        child: Text(
+                          lastWords,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      bottom: 10,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                  blurRadius: .26,
+                                  spreadRadius: level * 1.5,
+                                  color: Colors.black.withOpacity(.05))
+                            ],
+                            color: Colors.white,
+                            borderRadius: BorderRadius.all(Radius.circular(50)),
+                          ),
+                          child: IconButton(
+                            icon: Icon(Icons.mic),
+                            onPressed: () => null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 1,
+          child: Column(
+            children: <Widget>[
+              Center(
+                child: Text(
+                  'Error Status',
+                  style: TextStyle(fontSize: 22.0),
+                ),
+              ),
+              Center(
+                child: Text(lastError),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          color: Theme.of(context).backgroundColor,
+          child: Center(
+            child: speech.isListening
+                ? Text(
+                    "I'm listening...",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  )
+                : Text(
+                    'Not listening',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+          ),
+        ),
+      ]),
     );
   }
 
-  _start() async {
-    try {
-      if (await AudioRecorder.hasPermissions) {
-        if (_controller.text != null && _controller.text != "") {
-          String path = _controller.text;
-          if (!_controller.text.contains('/')) {
-            io.Directory appDocDirectory =
-            await getApplicationDocumentsDirectory();
-            path = appDocDirectory.path + '/' + _controller.text;
-          }
-          print("Start recording: $path");
-          await AudioRecorder.start(
-              path: path, audioOutputFormat: AudioOutputFormat.AAC);
-        } else {
-          await AudioRecorder.start();
-        }
-        bool isRecording = await AudioRecorder.isRecording;
-        setState(() {
-          _recording = new Recording(duration: new Duration(), path: "");
-          _isRecording = isRecording;
-        });
-      } else {
-        Scaffold.of(context).showSnackBar(
-            new SnackBar(content: new Text("You must accept permissions")));
-      }
-    } catch (e) {
-      print(e);
+  Future<void> initSpeechState() async {
+    bool hasSpeech = await speech.initialize(
+        onError: errorListener, onStatus: statusListener);
+    if (hasSpeech) {
+      _localeNames = await speech.locales();
+
+      var systemLocale = await speech.systemLocale();
+      _currentLocaleId = systemLocale.localeId;
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _hasSpeech = hasSpeech;
+    });
   }
 
-  _stop() async {
-    var recording = await AudioRecorder.stop();
-    print("Stop recording: ${recording.path}");
-    bool isRecording = await AudioRecorder.isRecording;
-    File file = widget.localFileSystem.file(recording.path);
-    print("  File length: ${await file.length()}");
+  void startListening() {
+    lastWords = "";
+    lastError = "";
+    speech.listen(
+        onResult: resultListener,
+        listenFor: Duration(seconds: 10),
+        localeId: _currentLocaleId,
+        onSoundLevelChange: soundLevelListener,
+        cancelOnError: true,
+        listenMode: ListenMode.confirmation);
+    setState(() {});
+  }
+
+  void stopListening() {
+    speech.stop();
     setState(() {
-      _recording = recording;
-      _isRecording = isRecording;
+      level = 0.0;
     });
-    _controller.text = recording.path;
+  }
+
+  void cancelListening() {
+    speech.cancel();
+    setState(() {
+      level = 0.0;
+    });
+  }
+
+  void resultListener(SpeechRecognitionResult result) {
+    setState(() {
+      lastWords = "${result.recognizedWords} - ${result.finalResult}";
+    });
+  }
+
+  void soundLevelListener(double level) {
+    minSoundLevel = min(minSoundLevel, level);
+    maxSoundLevel = max(maxSoundLevel, level);
+    // print("sound level $level: $minSoundLevel - $maxSoundLevel ");
+    setState(() {
+      this.level = level;
+    });
+  }
+
+  void errorListener(SpeechRecognitionError error) {
+    // print("Received error status: $error, listening: ${speech.isListening}");
+    setState(() {
+      lastError = "${error.errorMsg} - ${error.permanent}";
+    });
+  }
+
+  void statusListener(String status) {
+    // print(
+    // "Received listener status: $status, listening: ${speech.isListening}");
+    setState(() {
+      lastStatus = "$status";
+    });
+  }
+
+  _switchLang(selectedVal) {
+    setState(() {
+      _currentLocaleId = selectedVal;
+    });
+    print(selectedVal);
   }
 }
