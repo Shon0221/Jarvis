@@ -7,6 +7,9 @@ import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
+
 void main() {
   runApp(MyApp());
 }
@@ -258,6 +261,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void stopListening() {
     speech.stop();
+    print("stopListening");
     setState(() {
       level = 0.0;
     });
@@ -265,6 +269,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void cancelListening() {
     speech.cancel();
+    print("cancelListening");
     setState(() {
       level = 0.0;
     });
@@ -272,7 +277,12 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void resultListener(SpeechRecognitionResult result) {
     setState(() {
+      // recognition result
       lastWords = "${result.recognizedWords} - ${result.finalResult}";
+      if (result.finalResult) {
+        print("resultListener: $lastWords");
+        connect(result.recognizedWords);
+      }
     });
   }
 
@@ -305,5 +315,82 @@ class _MyHomePageState extends State<MyHomePage> {
       _currentLocaleId = selectedVal;
     });
     print(selectedVal);
+  }
+
+  Future<int> connect(String msg) async {
+    final client =
+        MqttServerClient.withPort('192.168.0.100', 'flutter_client', 1883);
+    client.logging(on: true);
+    client.keepAlivePeriod = 20;
+    client.onConnected = onConnected;
+    client.onDisconnected = onDisconnected;
+    client.onUnsubscribed = onUnsubscribed;
+    client.onSubscribed = onSubscribed;
+    client.onSubscribeFail = onSubscribeFail;
+    client.pongCallback = pong;
+    print('Message: $msg');
+    final connMessage = MqttConnectMessage()
+        .withClientIdentifier('Mqtt_spl_id')
+        .keepAliveFor(20)
+        .withWillTopic(
+            'willtopic') // If you set this you must set a will message
+        .withWillMessage('My Will message')
+        .startClean() // Non persistent session for testing
+        .withWillQos(MqttQos.atLeastOnce);
+    print('EXAMPLE::Mosquitto client connecting....');
+    client.connectionMessage = connMessage;
+    try {
+      // Input mqtt uaer & password
+      await client.connect('', '');
+    } catch (e) {
+      print('Exception: $e');
+      client.disconnect();
+      return -1;
+    }
+
+    const topic = ''; // Not a wildcard topic
+    print('EXAMPLE::Publishing our topic');
+
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(msg);
+
+    /// Publish it
+    client.publishMessage(topic, MqttQos.exactlyOnce, builder.payload);
+    print('EXAMPLE::Sleeping....');
+    await MqttUtilities.asyncSleep(20);
+    print('EXAMPLE::Disconnecting');
+    client.disconnect();
+    await MqttUtilities.asyncSleep(10);
+    return 0;
+  }
+
+  // connection succeeded
+  void onConnected() {
+    print('Connected');
+  }
+
+// unconnected
+  void onDisconnected() {
+    print('Disconnected');
+  }
+
+// subscribe to topic succeeded
+  void onSubscribed(String topic) {
+    print('Subscribed topic: $topic');
+  }
+
+// subscribe to topic failed
+  void onSubscribeFail(String topic) {
+    print('Failed to subscribe $topic');
+  }
+
+// unsubscribe succeeded
+  void onUnsubscribed(String topic) {
+    print('Unsubscribed topic: $topic');
+  }
+
+// PING response received
+  void pong() {
+    print('Ping response client callback invoked');
   }
 }
