@@ -15,16 +15,6 @@ Future<int> main() async {
 
   client.onSubscribed = onSubscribed;
 
-  final connMess = MqttConnectMessage()
-      .withClientIdentifier('Mqtt_spl_id')
-      .keepAliveFor(60) // Must agree with the keep alive set above or not set
-      .withWillTopic('willtopic') // If you set this you must set a will message
-      .withWillMessage('My Will message')
-      .startClean() // Non persistent session for testing
-      .withWillQos(MqttQos.atLeastOnce);
-  print('EXAMPLE::Mosquitto client connecting....');
-  client.connectionMessage = connMess;
-
   try {
     // Input mqtt uaer & password
     await client.connect('', '');
