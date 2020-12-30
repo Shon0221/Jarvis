@@ -329,16 +329,7 @@ class _MyHomePageState extends State<MyHomePage> {
     client.onSubscribeFail = onSubscribeFail;
     client.pongCallback = pong;
     print('Message: $msg');
-    final connMessage = MqttConnectMessage()
-        .withClientIdentifier('Mqtt_spl_id')
-        .keepAliveFor(20)
-        .withWillTopic(
-            'willtopic') // If you set this you must set a will message
-        .withWillMessage('My Will message')
-        .startClean() // Non persistent session for testing
-        .withWillQos(MqttQos.atLeastOnce);
-    print('EXAMPLE::Mosquitto client connecting....');
-    client.connectionMessage = connMessage;
+
     try {
       // Input mqtt uaer & password
       await client.connect('', '');
